@@ -1,0 +1,11 @@
+sqlite> SELECT s.sID, s.sName
+   ...> FROM Student s
+   ...> WHERE NOT EXISTS(
+   ...>   SELECT c.cName
+   ...>   FROM College c
+   ...>   WHERE NOT EXISTS(
+   ...>     SELECT 1
+   ...>     FROM Apply a
+   ...>     WHERE a.sID = s.sID AND a.cName = c.cName
+   ...>   )
+   ...> );
