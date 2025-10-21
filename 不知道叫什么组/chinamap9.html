@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+	<meta name="referrer" content="no-referrer" />
+    <title>中国艾滋病数据可视化</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Microsoft YaHei', sans-serif;
+            height: calc(100vh - 40px);
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin: 0 0 10px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+            color: #7f8c8d;
+        }
+        .back-btn {
+            display: block;
+            margin: 10px auto;
+            padding: 8px 16px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        .back-btn:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .hidden {
+            display: none;
+        }
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            overflow: hidden;
+        }
+        .chart-container {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            gap: 20px;
+        }
+        #china-map {
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        #trend-chart {
+            width: 60%;
+            height: 100%;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        #province-map {
+            width: 40%;
+            height: 100%;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .time-slider-container {
+            margin: 20px auto;
+            width: 90%;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .slider-title {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .year-display {
+            font-weight: bold;
+            color: #e74c3c;
+            font-size: 18px;
+        }
+        #year-slider {
+            width: 100%;
+            height: 10px;
+            -webkit-appearance: none;
+            background: #ecf0f1;
+            border-radius: 5px;
+            outline: none;
+        }
+        #year-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.2s ease;
+        }
+        #year-slider::-webkit-slider-thumb:hover {
+            background: #2980b9;
+            transform: scale(1.1);
+        }
+        .legend {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        .data-source {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #95a5a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <h1>中国各省份艾滋病发病率可视化 (2011-2022)</h1>
+        
+        <div class="time-slider-container">
+            <div class="slider-header">
+                <div class="slider-title">选择年份查看数据变化</div>
+                <div class="year-display" id="year-display">2022年</div>
+            </div>
+            <input type="range" id="year-slider" min="2011" max="2022" value="2022" step="1">
+            <div class="legend">
+                <span>2011年</span>
+                <span>2022年</span>
+            </div>
+        </div>
+        
+        <button id="back-btn" class="back-btn hidden">返回全国地图</button>
+        <div class="chart-container">
+            <div id="china-map"></div>
+            <div id="trend-chart" class="hidden"></div>
+            <div id="province-map" class="hidden"></div>
+        </div>
+        <div id="loading" class="loading">地图数据加载中...</div>
+        
+        <div class="data-source">数据来源：国家卫生健康委员会疾病预防控制局</div>
+    </div>
+
+    <script>
+        // 初始化ECharts实例
+        var chinaChart = echarts.init(document.getElementById('china-map'));
+        var provinceChart = echarts.init(document.getElementById('province-map'));
+        var trendChart = echarts.init(document.getElementById('trend-chart'));
+        
+        // 从XLSX文件中提取的所有年份数据
+        var yearlyData = {
+  2011: [
+        {name: '北京市', incidence: 1.18, mortality: 0.11},
+        {name: '天津市', incidence: 0.88, mortality: 0.19},
+        {name: '河北省', incidence: 0.21, mortality: 0.08},
+        {name: '山西省', incidence: 0.55, mortality: 0.2},
+        {name: '内蒙古自治区', incidence: 0.13, mortality: 0.05},
+        {name: '辽宁省', incidence: 0.42, mortality: 0.14},
+        {name: '吉林省', incidence: 0.67, mortality: 0.2},
+        {name: '黑龙江省', incidence: 0.41, mortality: 0.16},
+        {name: '上海市', incidence: 1.55, mortality: 0.13},
+        {name: '江苏省', incidence: 0.59, mortality: 0.16},
+        {name: '浙江省', incidence: 0.94, mortality: 0.22},
+        {name: '安徽省', incidence: 0.76, mortality: 0.31},
+        {name: '福建省', incidence: 0.71, mortality: 0.31},
+        {name: '江西省', incidence: 0.71, mortality: 0.33},
+        {name: '山东省', incidence: 0.13, mortality: 0.05},
+        {name: '河南省', incidence: 1.86, mortality: 1.44},
+        {name: '湖北省', incidence: 0.78, mortality: 0.41},
+        {name: '湖南省', incidence: 1.41, mortality: 0.68},
+        {name: '广东省', incidence: 1.41, mortality: 0.6},
+        {name: '广西壮族自治区', incidence: 10.88, mortality: 4.35},
+        {name: '海南省', incidence: 0.68, mortality: 0.53},
+        {name: '重庆市', incidence: 2.54, mortality: 1},
+        {name: '四川省', incidence: 2.68, mortality: 1.26},
+        {name: '贵州省', incidence: 1.36, mortality: 0.85},
+        {name: '云南省', incidence: 5.92, mortality: 2.74},
+        {name: '西藏自治区', incidence: 0.17, mortality: 0.03},
+        {name: '陕西省', incidence: 0.45, mortality: 0.13},
+        {name: '甘肃省', incidence: 0.25, mortality: 0.11},
+        {name: '青海省', incidence: 0.53, mortality: 0.04},
+        {name: '宁夏回族自治区', incidence: 0.19, mortality: 0.13},
+        {name: '新疆维吾尔自治区', incidence: 3.18, mortality: 2.05},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2012: [
+        {name: '北京市', incidence: 2.75, mortality: 0.17},
+        {name: '天津市', incidence: 1.15, mortality: 0.2},
+        {name: '河北省', incidence: 0.38, mortality: 0.07},
+        {name: '山西省', incidence: 0.7, mortality: 0.17},
+        {name: '内蒙古自治区', incidence: 0.28, mortality: 0.04},
+        {name: '辽宁省', incidence: 1.02, mortality: 0.15},
+        {name: '吉林省', incidence: 0.92, mortality: 0.22},
+        {name: '黑龙江省', incidence: 0.68, mortality: 0.17},
+        {name: '上海市', incidence: 2.78, mortality: 0.16},
+        {name: '江苏省', incidence: 1.24, mortality: 0.21},
+        {name: '浙江省', incidence: 1.79, mortality: 0.31},
+        {name: '安徽省', incidence: 1.37, mortality: 0.34},
+        {name: '福建省', incidence: 1.23, mortality: 0.29},
+        {name: '江西省', incidence: 1.27, mortality: 0.3},
+        {name: '山东省', incidence: 0.3, mortality: 0.06},
+        {name: '河南省', incidence: 3.4, mortality: 1.71},
+        {name: '湖北省', incidence: 1.48, mortality: 0.44},
+        {name: '湖南省', incidence: 2.92, mortality: 0.8},
+        {name: '广东省', incidence: 2.94, mortality: 0.7},
+        {name: '广西壮族自治区', incidence: 18.15, mortality: 6.46},
+        {name: '海南省', incidence: 1.48, mortality: 0.56},
+        {name: '重庆市', incidence: 5.54, mortality: 1.36},
+        {name: '四川省', incidence: 6.09, mortality: 1.53},
+        {name: '贵州省', incidence: 4.02, mortality: 0.98},
+        {name: '云南省', incidence: 13.63, mortality: 3.4},
+        {name: '西藏自治区', incidence: 0.69, mortality: 0.13},
+        {name: '陕西省', incidence: 0.91, mortality: 0.22},
+        {name: '甘肃省', incidence: 0.55, mortality: 0.15},
+        {name: '青海省', incidence: 1.36, mortality: 0.28},
+        {name: '宁夏回族自治区', incidence: 0.75, mortality: 0.2},
+        {name: '新疆维吾尔自治区', incidence: 11.09, mortality: 2.34},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2013: [
+        {name: '北京市', incidence: 2.95, mortality: 0.18},
+        {name: '天津市', incidence: 1.37, mortality: 0.17},
+        {name: '河北省', incidence: 0.57, mortality: 0.1},
+        {name: '山西省', incidence: 0.86, mortality: 0.23},
+        {name: '内蒙古自治区', incidence: 0.54, mortality: 0.09},
+        {name: '辽宁省', incidence: 1.31, mortality: 0.23},
+        {name: '吉林省', incidence: 1.25, mortality: 0.35},
+        {name: '黑龙江省', incidence: 0.98, mortality: 0.2},
+        {name: '上海市', incidence: 2.31, mortality: 0.16},
+        {name: '江苏省', incidence: 1.48, mortality: 0.27},
+        {name: '浙江省', incidence: 2.28, mortality: 0.28},
+        {name: '安徽省', incidence: 1.4, mortality: 0.31},
+        {name: '福建省', incidence: 1.1, mortality: 0.21},
+        {name: '江西省', incidence: 1.68, mortality: 0.38},
+        {name: '山东省', incidence: 0.36, mortality: 0.07},
+        {name: '河南省', incidence: 3.03, mortality: 1.19},
+        {name: '湖北省', incidence: 1.77, mortality: 0.47},
+        {name: '湖南省', incidence: 3.16, mortality: 0.84},
+        {name: '广东省', incidence: 2.89, mortality: 0.67},
+        {name: '广西壮族自治区', incidence: 15.04, mortality: 5.92},
+        {name: '海南省', incidence: 1.7, mortality: 0.56},
+        {name: '重庆市', incidence: 6.16, mortality: 1.36},
+        {name: '四川省', incidence: 7.39, mortality: 1.64},
+        {name: '贵州省', incidence: 4.43, mortality: 1.15},
+        {name: '云南省', incidence: 12.47, mortality: 3.6},
+        {name: '西藏自治区', incidence: 0.29, mortality: 0.06},
+        {name: '陕西省', incidence: 1.33, mortality: 0.21},
+        {name: '甘肃省', incidence: 0.68, mortality: 0.17},
+        {name: '青海省', incidence: 1.62, mortality: 0.28},
+        {name: '宁夏回族自治区', incidence: 0.91, mortality: 0.2},
+        {name: '新疆维吾尔自治区', incidence: 8.02, mortality: 2.62},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2014: [
+        {name: '北京市', incidence: 3.33, mortality: 0.21},
+        {name: '天津市', incidence: 1.58, mortality: 0.22},
+        {name: '河北省', incidence: 0.7, mortality: 0.15},
+        {name: '山西省', incidence: 1.18, mortality: 0.2},
+        {name: '内蒙古自治区', incidence: 0.81, mortality: 0.13},
+        {name: '辽宁省', incidence: 1.49, mortality: 0.28},
+        {name: '吉林省', incidence: 1.59, mortality: 0.44},
+        {name: '黑龙江省', incidence: 1.26, mortality: 0.18},
+        {name: '上海市', incidence: 1.88, mortality: 0.14},
+        {name: '江苏省', incidence: 1.65, mortality: 0.29},
+        {name: '浙江省', incidence: 2.74, mortality: 0.33},
+        {name: '安徽省', incidence: 1.43, mortality: 0.35},
+        {name: '福建省', incidence: 1.65, mortality: 0.23},
+        {name: '江西省', incidence: 1.73, mortality: 0.43},
+        {name: '山东省', incidence: 0.47, mortality: 0.09},
+        {name: '河南省', incidence: 3.05, mortality: 1.29},
+        {name: '湖北省', incidence: 1.89, mortality: 0.48},
+        {name: '湖南省', incidence: 3.4, mortality: 1.09},
+        {name: '广东省', incidence: 3.29, mortality: 0.72},
+        {name: '广西壮族自治区', incidence: 14.02, mortality: 5.55},
+        {name: '海南省', incidence: 1.14, mortality: 0.63},
+        {name: '重庆市', incidence: 8.39, mortality: 1.45},
+        {name: '四川省', incidence: 8.02, mortality: 1.83},
+        {name: '贵州省', incidence: 4.87, mortality: 1.15},
+        {name: '云南省', incidence: 12.34, mortality: 3.66},
+        {name: '西藏自治区', incidence: 0.67, mortality: 0.13},
+        {name: '陕西省', incidence: 1.41, mortality: 0.2},
+        {name: '甘肃省', incidence: 0.88, mortality: 0.15},
+        {name: '青海省', incidence: 1.85, mortality: 0.4},
+        {name: '宁夏回族自治区', incidence: 0.87, mortality: 0.24},
+        {name: '新疆维吾尔自治区', incidence: 7.12, mortality: 2.42},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2015: [
+        {name: '北京市', incidence: 3.61, mortality: 0.22},
+        {name: '天津市', incidence: 1.79, mortality: 0.24},
+        {name: '河北省', incidence: 0.92, mortality: 0.15},
+        {name: '山西省', incidence: 1.35, mortality: 0.2},
+        {name: '内蒙古自治区', incidence: 0.83, mortality: 0.15},
+        {name: '辽宁省', incidence: 1.88, mortality: 0.3},
+        {name: '吉林省', incidence: 1.96, mortality: 0.54},
+        {name: '黑龙江省', incidence: 1.44, mortality: 0.19},
+        {name: '上海市', incidence: 2.15, mortality: 0.15},
+        {name: '江苏省', incidence: 1.98, mortality: 0.23},
+        {name: '浙江省', incidence: 3.02, mortality: 0.33},
+        {name: '安徽省', incidence: 1.71, mortality: 0.27},
+        {name: '福建省', incidence: 2, mortality: 0.24},
+        {name: '江西省', incidence: 2.6, mortality: 0.68},
+        {name: '山东省', incidence: 0.62, mortality: 0.11},
+        {name: '河南省', incidence: 3.26, mortality: 1.3},
+        {name: '湖北省', incidence: 2.02, mortality: 0.56},
+        {name: '湖南省', incidence: 3.82, mortality: 0.87},
+        {name: '广东省', incidence: 3.65, mortality: 0.73},
+        {name: '广西壮族自治区', incidence: 13.25, mortality: 5.59},
+        {name: '海南省', incidence: 2.1, mortality: 0.53},
+        {name: '重庆市', incidence: 8.76, mortality: 1.56},
+        {name: '四川省', incidence: 9.55, mortality: 2.07},
+        {name: '贵州省', incidence: 6.02, mortality: 1.45},
+        {name: '云南省', incidence: 12.31, mortality: 3.88},
+        {name: '西藏自治区', incidence: 1.04, mortality: 0.16},
+        {name: '陕西省', incidence: 1.74, mortality: 0.3},
+        {name: '甘肃省', incidence: 1.2, mortality: 0.222},
+        {name: '青海省', incidence: 2.59, mortality: 0.39},
+        {name: '宁夏回族自治区', incidence: 1.18, mortality: 0.21},
+        {name: '新疆维吾尔自治区', incidence: 8.13, mortality: 2.96},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2016: [
+        {name: '北京市', incidence: 3.62, mortality: 0.15},
+        {name: '天津市', incidence: 1.79, mortality: 0.2},
+        {name: '河北省', incidence: 0.79, mortality: 0.16},
+        {name: '山西省', incidence: 1.45, mortality: 0.27},
+        {name: '内蒙古自治区', incidence: 1.14, mortality: 0.15},
+        {name: '辽宁省', incidence: 2.31, mortality: 0.29},
+        {name: '吉林省', incidence: 1.99, mortality: 0.46},
+        {name: '黑龙江省', incidence: 1.48, mortality: 0.23},
+        {name: '上海市', incidence: 2.27, mortality: 0.21},
+        {name: '江苏省', incidence: 2.02, mortality: 0.28},
+        {name: '浙江省', incidence: 3.37, mortality: 0.44},
+        {name: '安徽省', incidence: 2.17, mortality: 0.39},
+        {name: '福建省', incidence: 2.43, mortality: 0.29},
+        {name: '江西省', incidence: 3.01, mortality: 0.86},
+        {name: '山东省', incidence: 0.74, mortality: 0.12},
+        {name: '河南省', incidence: 3.17, mortality: 1.28},
+        {name: '湖北省', incidence: 2.18, mortality: 0.6},
+        {name: '湖南省', incidence: 4.15, mortality: 1.17},
+        {name: '广东省', incidence: 3.8, mortality: 0.82},
+        {name: '广西壮族自治区', incidence: 12.48, mortality: 5.57},
+        {name: '海南省', incidence: 1.92, mortality: 0.64},
+        {name: '重庆市', incidence: 10.2, mortality: 2.08},
+        {name: '四川省', incidence: 11.16, mortality: 2.47},
+        {name: '贵州省', incidence: 7.42, mortality: 1.73},
+        {name: '云南省', incidence: 12.04, mortality: 3.99},
+        {name: '西藏自治区', incidence: 1.57, mortality: 0.12},
+        {name: '陕西省', incidence: 2.13, mortality: 0.35},
+        {name: '甘肃省', incidence: 1.55, mortality: 0.24},
+        {name: '青海省', incidence: 2.97, mortality: 0.49},
+        {name: '宁夏回族自治区', incidence: 1.26, mortality: 0.18},
+        {name: '新疆维吾尔自治区', incidence: 8.14, mortality: 2.83},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2017: [
+        {name: '北京市', incidence: 3.43, mortality: 0.13},
+        {name: '天津市', incidence: 1.8, mortality: 0.17},
+        {name: '河北省', incidence: 1.01, mortality: 0.19},
+        {name: '山西省', incidence: 1.73, mortality: 0.26},
+        {name: '内蒙古自治区', incidence: 1.23, mortality: 0.14},
+        {name: '辽宁省', incidence: 2.51, mortality: 0.28},
+        {name: '吉林省', incidence: 2.03, mortality: 0.46},
+        {name: '黑龙江省', incidence: 1.62, mortality: 0.28},
+        {name: '上海市', incidence: 2.13, mortality: 0.18},
+        {name: '江苏省', incidence: 1.65, mortality: 0.25},
+        {name: '浙江省', incidence: 3.24, mortality: 0.45},
+        {name: '安徽省', incidence: 1.85, mortality: 0.43},
+        {name: '福建省', incidence: 2.5, mortality: 0.35},
+        {name: '江西省', incidence: 3.12, mortality: 0.81},
+        {name: '山东省', incidence: 0.85, mortality: 0.11},
+        {name: '河南省', incidence: 3.14, mortality: 1.27},
+        {name: '湖北省', incidence: 2.38, mortality: 0.63},
+        {name: '湖南省', incidence: 4.42, mortality: 1.36},
+        {name: '广东省', incidence: 3.92, mortality: 0.78},
+        {name: '广西壮族自治区', incidence: 12.63, mortality: 5.26},
+        {name: '海南省', incidence: 1.84, mortality: 0.58},
+        {name: '重庆市', incidence: 9.73, mortality: 2.26},
+        {name: '四川省', incidence: 13.04, mortality: 2.89},
+        {name: '贵州省', incidence: 8.57, mortality: 2.45},
+        {name: '云南省', incidence: 11.89, mortality: 4.83},
+        {name: '西藏自治区', incidence: 0.85, mortality: 0.09},
+        {name: '陕西省', incidence: 2.33, mortality: 0.39},
+        {name: '甘肃省', incidence: 1.84, mortality: 0.31},
+        {name: '青海省', incidence: 3.29, mortality: 0.51},
+        {name: '宁夏回族自治区', incidence: 1.5, mortality: 0.33},
+        {name: '新疆维吾尔自治区', incidence: 8.35, mortality: 2.84},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2018: [
+        {name: '北京市', incidence: 3.91, mortality: 0.31},
+        {name: '天津市', incidence: 1.84, mortality: 0.3},
+        {name: '河北省', incidence: 1.16, mortality: 0.18},
+        {name: '山西省', incidence: 1.49, mortality: 0.35},
+        {name: '内蒙古自治区', incidence: 1.36, mortality: 0.2},
+        {name: '辽宁省', incidence: 2.89, mortality: 0.42},
+        {name: '吉林省', incidence: 2.17, mortality: 0.47},
+        {name: '黑龙江省', incidence: 1.84, mortality: 0.36},
+        {name: '上海市', incidence: 2.13, mortality: 0.18},
+        {name: '江苏省', incidence: 1.93, mortality: 0.33},
+        {name: '浙江省', incidence: 3.14, mortality: 0.46},
+        {name: '安徽省', incidence: 2.06, mortality: 0.44},
+        {name: '福建省', incidence: 2.68, mortality: 0.57},
+        {name: '江西省', incidence: 3.55, mortality: 0.89},
+        {name: '山东省', incidence: 0.96, mortality: 0.11},
+        {name: '河南省', incidence: 3.03, mortality: 1.46},
+        {name: '湖北省', incidence: 2.5, mortality: 0.69},
+        {name: '湖南省', incidence: 4.52, mortality: 1.6},
+        {name: '广东省', incidence: 4.03, mortality: 0.87},
+        {name: '广西壮族自治区', incidence: 12.32, mortality: 6.29},
+        {name: '海南省', incidence: 2.24, mortality: 0.54},
+        {name: '重庆市', incidence: 11.6, mortality: 3.14},
+        {name: '四川省', incidence: 17.47, mortality: 4.71},
+        {name: '贵州省', incidence: 10.32, mortality: 2.73},
+        {name: '云南省', incidence: 11.52, mortality: 4.61},
+        {name: '西藏自治区', incidence: 1.54, mortality: 0.12},
+        {name: '陕西省', incidence: 2.66, mortality: 0.43},
+        {name: '甘肃省', incidence: 2.35, mortality: 0.39},
+        {name: '青海省', incidence: 2.59, mortality: 0.5},
+        {name: '宁夏回族自治区', incidence: 1.69, mortality: 0.32},
+        {name: '新疆维吾尔自治区', incidence: 10.1, mortality: 3.74},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2019: [
+        {name: '北京市', incidence: 3.17, mortality: 0.37},
+        {name: '天津市', incidence: 1.58, mortality: 0.31},
+        {name: '河北省', incidence: 1.31, mortality: 0.18},
+        {name: '山西省', incidence: 1.65, mortality: 0.38},
+        {name: '内蒙古自治区', incidence: 1.37, mortality: 0.21},
+        {name: '辽宁省', incidence: 2.7, mortality: 0.51},
+        {name: '吉林省', incidence: 2.28, mortality: 0.48},
+        {name: '黑龙江省', incidence: 1.96, mortality: 0.38},
+        {name: '上海市', incidence: 2.21, mortality: 0.21},
+        {name: '江苏省', incidence: 2.07, mortality: 0.31},
+        {name: '浙江省', incidence: 3.3, mortality: 0.51},
+        {name: '安徽省', incidence: 2, mortality: 0.49},
+        {name: '福建省', incidence: 2.96, mortality: 0.51},
+        {name: '江西省', incidence: 3.77, mortality: 1.02},
+        {name: '山东省', incidence: 1.04, mortality: 0.15},
+        {name: '河南省', incidence: 3.43, mortality: 1.29},
+        {name: '湖北省', incidence: 2.61, mortality: 0.72},
+        {name: '湖南省', incidence: 4.61, mortality: 1.72},
+        {name: '广东省', incidence: 4.01, mortality: 0.9},
+        {name: '广西壮族自治区', incidence: 14.28, mortality: 7.81},
+        {name: '海南省', incidence: 2.17, mortality: 0.62},
+        {name: '重庆市', incidence: 12.58, mortality: 4.1},
+        {name: '四川省', incidence: 21.42, mortality: 4.71},
+        {name: '贵州省', incidence: 13.2, mortality: 4.53},
+        {name: '云南省', incidence: 11.79, mortality: 4.62},
+        {name: '西藏自治区', incidence: 0.9, mortality: 0.2},
+        {name: '陕西省', incidence: 2.86, mortality: 0.52},
+        {name: '甘肃省', incidence: 2.29, mortality: 0.5},
+        {name: '青海省', incidence: 3.32, mortality: 0.71},
+        {name: '宁夏回族自治区', incidence: 2.21, mortality: 0.38},
+        {name: '新疆维吾尔自治区', incidence: 9.5, mortality: 4.32},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2020: [
+        {name: '北京市', incidence: 1.89, mortality: 0.14},
+        {name: '天津市', incidence: 1.73, mortality: 0.2},
+        {name: '河北省', incidence: 1.45, mortality: 0.22},
+        {name: '山西省', incidence: 1.54, mortality: 0.32},
+        {name: '内蒙古自治区', incidence: 1.17, mortality: 0.21},
+        {name: '辽宁省', incidence: 2.24, mortality: 0.36},
+        {name: '吉林省', incidence: 1.94, mortality: 0.42},
+        {name: '黑龙江省', incidence: 1.47, mortality: 0.34},
+        {name: '上海市', incidence: 1.66, mortality: 0.3},
+        {name: '江苏省', incidence: 1.6, mortality: 0.29},
+        {name: '浙江省', incidence: 2.81, mortality: 0.48},
+        {name: '安徽省', incidence: 1.72, mortality: 0.45},
+        {name: '福建省', incidence: 2.76, mortality: 0.5},
+        {name: '江西省', incidence: 3.67, mortality: 1.26},
+        {name: '山东省', incidence: 1.02, mortality: 0.16},
+        {name: '河南省', incidence: 2.99, mortality: 1.34},
+        {name: '湖北省', incidence: 2.3, mortality: 0.74},
+        {name: '湖南省', incidence: 4.09, mortality: 1.43},
+        {name: '广东省', incidence: 3.44, mortality: 0.87},
+        {name: '广西壮族自治区', incidence: 14.06, mortality: 7.13},
+        {name: '海南省', incidence: 2.26, mortality: 0.6},
+        {name: '重庆市', incidence: 11.47, mortality: 3.67},
+        {name: '四川省', incidence: 16.54, mortality: 4.07},
+        {name: '贵州省', incidence: 11.49, mortality: 3.94},
+        {name: '云南省', incidence: 12.51, mortality: 3.84},
+        {name: '西藏自治区', incidence: 1.34, mortality: 0.2},
+        {name: '陕西省', incidence: 2.45, mortality: 0.5},
+        {name: '甘肃省', incidence: 2.04, mortality: 0.5},
+        {name: '青海省', incidence: 2.42, mortality: 0.76},
+        {name: '宁夏回族自治区', incidence: 1.55, mortality: 0.43},
+        {name: '新疆维吾尔自治区', incidence: 5.96, mortality: 2.43},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],
+    2021: [
+        {name: '北京市', incidence: 2.59, mortality: 0.19},
+        {name: '天津市', incidence: 2.28, mortality: 0.27},
+        {name: '河北省', incidence: 1.36, mortality: 0.23},
+        {name: '山西省', incidence: 1.92, mortality: 0.34},
+        {name: '内蒙古自治区', incidence: 1.66, mortality: 0.23},
+        {name: '辽宁省', incidence: 2.3, mortality: 0.43},
+        {name: '吉林省', incidence: 2.78, mortality: 0.53},
+        {name: '黑龙江省', incidence: 1.7, mortality: 0.36},
+        {name: '上海市', incidence: 1.6, mortality: 0.23},
+        {name: '江苏省', incidence: 1.83, mortality: 0.28},
+        {name: '浙江省', incidence: 2.64, mortality: 0.48},
+        {name: '安徽省', incidence: 1.83, mortality: 0.56},
+        {name: '福建省', incidence: 2.58, mortality: 0.62},
+        {name: '江西省', incidence: 3.85, mortality: 1.21},
+        {name: '山东省', incidence: 1.01, mortality: 0.14},
+        {name: '河南省', incidence: 3.05, mortality: 1.37},
+        {name: '湖北省', incidence: 2.57, mortality: 0.75},
+        {name: '湖南省', incidence: 4.54, mortality: 1.6},
+        {name: '广东省', incidence: 3.61, mortality: 0.84},
+        {name: '广西壮族自治区', incidence: 14.19, mortality: 6.78},
+        {name: '海南省', incidence: 2.32, mortality: 0.57},
+        {name: '重庆市', incidence: 11.99, mortality: 4.39},
+        {name: '四川省', incidence: 13.95, mortality: 4.26},
+        {name: '贵州省', incidence: 10.48, mortality: 3.9},
+        {name: '云南省', incidence: 9.12, mortality: 3.97},
+        {name: '西藏自治区', incidence: 0.82, mortality: 0.08},
+        {name: '陕西省', incidence: 2.23, mortality: 0.48},
+        {name: '甘肃省', incidence: 2, mortality: 0.4},
+        {name: '青海省', incidence: 3.19, mortality: 0.71},
+        {name: '宁夏回族自治区', incidence: 1.47, mortality: 0.35},
+        {name: '新疆维吾尔自治区', incidence: 5.43, mortality: 3.04},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+    ],         
+   2022: [
+        {name: '北京市', incidence: 2.1, mortality: 0.11},
+        {name: '天津市', incidence: 1.29, mortality: 0.2},
+        {name: '河北省', incidence: 1.08, mortality: 0.17},
+        {name: '山西省', incidence: 1.22, mortality: 0.37},
+        {name: '内蒙古自治区', incidence: 1.28, mortality: 0.22},
+        {name: '辽宁省', incidence: 1.96, mortality: 0.32},
+        {name: '吉林省', incidence: 1.91, mortality: 0.46},
+        {name: '黑龙江省', incidence: 1.8, mortality: 0.35},
+        {name: '上海市', incidence: 1.12, mortality: 0.19},
+        {name: '江苏省', incidence: 1.52, mortality: 0.25},
+        {name: '浙江省', incidence: 2.34, mortality: 0.41},
+        {name: '安徽省', incidence: 1.65, mortality: 0.54},
+        {name: '福建省', incidence: 2.23, mortality: 0.46},
+        {name: '江西省', incidence: 3.45, mortality: 1.25},
+        {name: '山东省', incidence: 0.87, mortality: 0.16},
+        {name: '河南省', incidence: 2.37, mortality: 1.14},
+        {name: '湖北省', incidence: 2.48, mortality: 0.75},
+        {name: '湖南省', incidence: 3.67, mortality: 1.4},
+        {name: '广东省', incidence: 3.21, mortality: 0.79},
+        {name: '广西壮族自治区', incidence: 12.06, mortality: 6.9},
+        {name: '海南省', incidence: 2.19, mortality: 0.64},
+        {name: '重庆市', incidence: 11.89, mortality: 4.07},
+        {name: '四川省', incidence: 12.21, mortality: 4.47},
+        {name: '贵州省', incidence: 9.6, mortality: 3.88},
+        {name: '云南省', incidence: 7.37, mortality: 3.78},
+        {name: '西藏自治区', incidence: 0.55, mortality: 0.19},
+        {name: '陕西省', incidence: 2.29, mortality: 0.46},
+        {name: '甘肃省', incidence: 1.48, mortality: 0.33},
+        {name: '青海省', incidence: 2.05, mortality: 0.32},
+        {name: '宁夏回族自治区', incidence: 1.31, mortality: 0.41},
+        {name: '新疆维吾尔自治区', incidence: 4.89, mortality: 2.76},
+        {name: '台湾省', incidence: 0, mortality: 0},
+        {name: '香港特别行政区', incidence: 0, mortality: 0},
+        {name: '澳门特别行政区', incidence: 0, mortality: 0}
+            ]
+        };
+        
+        // 当前年份数据
+        var currentYear = 2022;
+        var currentData = yearlyData[currentYear];
+        
+        // 转换数据格式用于地图显示
+        function getMapData(year) {
+            return yearlyData[year].map(function(item) {
+                return {
+                    name: item.name,
+                    value: item.incidence,
+                    mortality: item.mortality
+                };
+            });
+        }
+        
+        // 全国地图配置项
+        var chinaOption = {
+            title: {
+                text: '中国各省份艾滋病发病率 (' + currentYear + '年)',
+                subtext: '发病率(单位：1/10万) | 死亡率(单位：1/10万)',
+                left: 'center',
+                top: 10,
+                textStyle: {
+                    fontSize: 18,
+                    fontWeight: 'bold'
+                }
+            },
+            tooltip: {
+                trigger: 'item',
+                formatter: function(params) {
+                    var dataItem = yearlyData[currentYear].find(function(item) {
+                        return item.name === params.name;
+                    });
+                    return params.name + '<br/>' +
+                           '发病率: ' + dataItem.incidence + '/10万<br/>' +
+                           '死亡率: ' + dataItem.mortality + '/10万';
+                }
+            },
+            visualMap: {
+                min: 0,
+                max: 20,
+                text: ['高', '低'],
+                realtime: false,
+                calculable: true,
+                inRange: {
+                    color: ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15']
+                },
+                textStyle: {
+                    color: '#333'
+                },
+                formatter: function (value) {
+                    return value + '/10万';
+                },
+                left: 'left',
+                bottom: '5%'
+            },
+            series: [
+                {
+                    name: '发病率数据',
+                    type: 'map',
+                    map: 'china',
+                    roam: true,
+                    emphasis: {
+                        label: {
+                            show: true,
+                            color: '#333'
+                        },
+                        itemStyle: {
+                            areaColor: '#ffc107'
+                        }
+                    },
+                }
+            ]
+        };
+        
+        // 从XLSX文件中提取的各省份历年发病率数据
+        var trendDataMap = {
+            '北京市': {province: '北京市', data: [
+                {year: '2011', value: 1.18}, {year: '2012', value: 2.75}, {year: '2013', value: 2.95},
+                {year: '2014', value: 3.33}, {year: '2015', value: 3.61}, {year: '2016', value: 3.62},
+                {year: '2017', value: 3.43}, {year: '2018', value: 3.91}, {year: '2019', value: 3.17},
+                {year: '2020', value: 1.89}, {year: '2021', value: 2.59}, {year: '2022', value: 2.1}
+            ]},
+            '天津市': {province: '天津市', data: [
+                {year: '2011', value: 0.88}, {year: '2012', value: 1.15}, {year: '2013', value: 1.37},
+                {year: '2014', value: 1.58}, {year: '2015', value: 1.79}, {year: '2016', value: 1.79},
+                {year: '2017', value: 1.8}, {year: '2018', value: 1.84}, {year: '2019', value: 1.58},
+                {year: '2020', value: 1.73}, {year: '2021', value: 2.28}, {year: '2022', value: 1.29}
+            ]},
+            '河北省': {province: '河北省', data: [
+                {year: '2011', value: 0.21}, {year: '2012', value: 0.38}, {year: '2013', value: 0.57},
+                {year: '2014', value: 0.7}, {year: '2015', value: 0.92}, {year: '2016', value: 0.79},
+                {year: '2017', value: 1.01}, {year: '2018', value: 1.16}, {year: '2019', value: 1.31},
+                {year: '2020', value: 1.45}, {year: '2021', value: 1.36}, {year: '2022', value: 1.08}
+            ]},
+            '山西省': {province: '山西省', data: [
+                {year: '2011', value: 0.55}, {year: '2012', value: 0.7}, {year: '2013', value: 0.86},
+                {year: '2014', value: 1.18}, {year: '2015', value: 1.35}, {year: '2016', value: 1.45},
+                {year: '2017', value: 1.73}, {year: '2018', value: 1.49}, {year: '2019', value: 1.65},
+                {year: '2020', value: 1.54}, {year: '2021', value: 1.92}, {year: '2022', value: 1.22}
+            ]},
+            '内蒙古自治区': {province: '内蒙古自治区', data: [
+                {year: '2011', value: 0.13}, {year: '2012', value: 0.28}, {year: '2013', value: 0.54},
+                {year: '2014', value: 0.81}, {year: '2015', value: 0.83}, {year: '2016', value: 1.14},
+                {year: '2017', value: 1.23}, {year: '2018', value: 1.36}, {year: '2019', value: 1.37},
+                {year: '2020', value: 1.17}, {year: '2021', value: 1.66}, {year: '2022', value: 1.28}
+            ]},
+            '辽宁省': {province: '辽宁省', data: [
+                {year: '2011', value: 0.42}, {year: '2012', value: 1.02}, {year: '2013', value: 1.31},
+                {year: '2014', value: 1.49}, {year: '2015', value: 1.88}, {year: '2016', value: 2.31},
+                {year: '2017', value: 2.51}, {year: '2018', value: 2.89}, {year: '2019', value: 2.7},
+                {year: '2020', value: 2.24}, {year: '2021', value: 2.3}, {year: '2022', value: 1.96}
+            ]},
+            '吉林省': {province: '吉林省', data: [
+                {year: '2011', value: 0.67}, {year: '2012', value: 0.92}, {year: '2013', value: 1.25},
+                {year: '2014', value: 1.59}, {year: '2015', value: 1.96}, {year: '2016', value: 1.99},
+                {year: '2017', value: 2.03}, {year: '2018', value: 2.17}, {year: '2019', value: 2.28},
+                {year: '2020', value: 1.94}, {year: '2021', value: 2.78}, {year: '2022', value: 1.91}
+            ]},
+            '黑龙江省': {province: '黑龙江省', data: [
+                {year: '2011', value: 0.41}, {year: '2012', value: 0.68}, {year: '2013', value: 0.98},
+                {year: '2014', value: 1.26}, {year: '2015', value: 1.44}, {year: '2016', value: 1.48},
+                {year: '2017', value: 1.62}, {year: '2018', value: 1.84}, {year: '2019', value: 1.96},
+                {year: '2020', value: 1.47}, {year: '2021', value: 1.7}, {year: '2022', value: 1.8}
+            ]},
+            '上海市': {province: '上海市', data: [
+                {year: '2011', value: 1.55}, {year: '2012', value: 2.78}, {year: '2013', value: 2.31},
+                {year: '2014', value: 1.88}, {year: '2015', value: 2.15}, {year: '2016', value: 2.27},
+                {year: '2017', value: 2.13}, {year: '2018', value: 2.13}, {year: '2019', value: 2.21},
+                {year: '2020', value: 1.66}, {year: '2021', value: 1.6}, {year: '2022', value: 1.12}
+            ]},
+            '江苏省': {province: '江苏省', data: [
+                {year: '2011', value: 0.59}, {year: '2012', value: 1.24}, {year: '2013', value: 1.48},
+                {year: '2014', value: 1.65}, {year: '2015', value: 1.98}, {year: '2016', value: 2.02},
+                {year: '2017', value: 1.65}, {year: '2018', value: 1.93}, {year: '2019', value: 2.07},
+                {year: '2020', value: 1.6}, {year: '2021', value: 1.83}, {year: '2022', value: 1.52}
+            ]},
+            '浙江省': {province: '浙江省', data: [
+                {year: '2011', value: 0.94}, {year: '2012', value: 1.79}, {year: '2013', value: 2.28},
+                {year: '2014', value: 2.74}, {year: '2015', value: 3.02}, {year: '2016', value: 3.37},
+                {year: '2017', value: 3.24}, {year: '2018', value: 3.14}, {year: '2019', value: 3.3},
+                {year: '2020', value: 2.81}, {year: '2021', value: 2.64}, {year: '2022', value: 2.34}
+            ]},
+            '安徽省': {province: '安徽省', data: [
+                {year: '2011', value: 0.76}, {year: '2012', value: 1.37}, {year: '2013', value: 1.4},
+                {year: '2014', value: 1.43}, {year: '2015', value: 1.71}, {year: '2016', value: 2.17},
+                {year: '2017', value: 1.85}, {year: '2018', value: 2.06}, {year: '2019', value: 2},
+                {year: '2020', value: 1.72}, {year: '2021', value: 1.83}, {year: '2022', value: 1.65}
+            ]},
+            '福建省': {province: '福建省', data: [
+                {year: '2011', value: 0.71}, {year: '2012', value: 1.23}, {year: '2013', value: 1.1},
+                {year: '2014', value: 1.65}, {year: '2015', value: 2}, {year: '2016', value: 2.43},
+                {year: '2017', value: 2.5}, {year: '2018', value: 2.68}, {year: '2019', value: 2.96},
+                {year: '2020', value: 2.76}, {year: '2021', value: 2.58}, {year: '2022', value: 2.23}
+            ]},
+            '江西省': {province: '江西省', data: [
+                {year: '2011', value: 0.71}, {year: '2012', value: 1.27}, {year: '2013', value: 1.68},
+                {year: '2014', value: 1.73}, {year: '2015', value: 2.6}, {year: '2016', value: 3.01},
+                {year: '2017', value: 3.12}, {year: '2018', value: 3.55}, {year: '2019', value: 3.77},
+                {year: '2020', value: 3.67}, {year: '2021', value: 3.85}, {year: '2022', value: 3.45}
+            ]},
+            '山东省': {province: '山东省', data: [
+                {year: '2011', value: 0.13}, {year: '2012', value: 0.3}, {year: '2013', value: 0.36},
+                {year: '2014', value: 0.47}, {year: '2015', value: 0.62}, {year: '2016', value: 0.74},
+                {year: '2017', value: 0.85}, {year: '2018', value: 0.96}, {year: '2019', value: 1.04},
+                {year: '2020', value: 1.02}, {year: '2021', value: 1.01}, {year: '2022', value: 0.87}
+            ]},
+            '河南省': {province: '河南省', data: [
+                {year: '2011', value: 1.86}, {year: '2012', value: 3.4}, {year: '2013', value: 3.03},
+                {year: '2014', value: 3.05}, {year: '2015', value: 3.26}, {year: '2016', value: 3.17},
+                {year: '2017', value: 3.14}, {year: '2018', value: 3.03}, {year: '2019', value: 3.43},
+                {year: '2020', value: 2.99}, {year: '2021', value: 3.05}, {year: '2022', value: 2.37}
+            ]},
+            '湖北省': {province: '湖北省', data: [
+                {year: '2011', value: 0.78}, {year: '2012', value: 1.48}, {year: '2013', value: 1.77},
+                {year: '2014', value: 1.89}, {year: '2015', value: 2.02}, {year: '2016', value: 2.18},
+                {year: '2017', value: 2.38}, {year: '2018', value: 2.5}, {year: '2019', value: 2.61},
+                {year: '2020', value: 2.3}, {year: '2021', value: 2.57}, {year: '2022', value: 2.48}
+            ]},
+            '湖南省': {province: '湖南省', data: [
+                {year: '2011', value: 1.41}, {year: '2012', value: 2.92}, {year: '2013', value: 3.16},
+                {year: '2014', value: 3.4}, {year: '2015', value: 3.82}, {year: '2016', value: 4.15},
+                {year: '2017', value: 4.42}, {year: '2018', value: 4.52}, {year: '2019', value: 4.61},
+                {year: '2020', value: 4.09}, {year: '2021', value: 4.54}, {year: '2022', value: 3.67}
+            ]},
+            '广东省': {province: '广东省', data: [
+                {year: '2011', value: 1.41}, {year: '2012', value: 2.94}, {year: '2013', value: 2.89},
+                {year: '2014', value: 3.29}, {year: '2015', value: 3.65}, {year: '2016', value: 3.8},
+                {year: '2017', value: 3.92}, {year: '2018', value: 4.03}, {year: '2019', value: 4.01},
+                {year: '2020', value: 3.44}, {year: '2021', value: 3.61}, {year: '2022', value: 3.21}
+            ]},
+            '广西壮族自治区': {province: '广西壮族自治区', data: [
+                {year: '2011', value: 10.88}, {year: '2012', value: 18.15}, {year: '2013', value: 15.04},
+                {year: '2014', value: 14.02}, {year: '2015', value: 13.25}, {year: '2016', value: 12.48},
+                {year: '2017', value: 12.63}, {year: '2018', value: 12.32}, {year: '2019', value: 14.28},
+                {year: '2020', value: 14.06}, {year: '2021', value: 14.19}, {year: '2022', value: 12.06}
+            ]},
+            '海南省': {province: '海南省', data: [
+                {year: '2011', value: 0.68}, {year: '2012', value: 1.48}, {year: '2013', value: 1.7},
+                {year: '2014', value: 1.14}, {year: '2015', value: 2.1}, {year: '2016', value: 1.92},
+                {year: '2017', value: 1.84}, {year: '2018', value: 2.24}, {year: '2019', value: 2.17},
+                {year: '2020', value: 2.26}, {year: '2021', value: 2.32}, {year: '2022', value: 2.19}
+            ]},
+            '重庆市': {province: '重庆市', data: [
+                {year: '2011', value: 2.54}, {year: '2012', value: 5.54}, {year: '2013', value: 6.16},
+                {year: '2014', value: 8.39}, {year: '2015', value: 8.76}, {year: '2016', value: 10.2},
+                {year: '2017', value: 9.73}, {year: '2018', value: 11.6}, {year: '2019', value: 12.58},
+                {year: '2020', value: 11.47}, {year: '2021', value: 11.99}, {year: '2022', value: 11.89}
+            ]},
+            '四川省': {province: '四川省', data: [
+                {year: '2011', value: 2.68}, {year: '2012', value: 6.09}, {year: '2013', value: 7.39},
+                {year: '2014', value: 8.02}, {year: '2015', value: 9.55}, {year: '2016', value: 11.16},
+                {year: '2017', value: 13.04}, {year: '2018', value: 17.47}, {year: '2019', value: 21.42},
+                {year: '2020', value: 16.54}, {year: '2021', value: 13.95}, {year: '2022', value: 12.21}
+            ]},
+            '贵州省': {province: '贵州省', data: [
+                {year: '2011', value: 1.36}, {year: '2012', value: 4.02}, {year: '2013', value: 4.43},
+                {year: '2014', value: 4.87}, {year: '2015', value: 6.02}, {year: '2016', value: 7.42},
+                {year: '2017', value: 8.57}, {year: '2018', value: 10.32}, {year: '2019', value: 13.2},
+                {year: '2020', value: 11.49}, {year: '2021', value: 10.48}, {year: '2022', value: 9.6}
+            ]},
+            '云南省': {province: '云南省', data: [
+                {year: '2011', value: 5.92}, {year: '2012', value: 13.63}, {year: '2013', value: 12.47},
+                {year: '2014', value: 12.34}, {year: '2015', value: 12.31}, {year: '2016', value: 12.04},
+                {year: '2017', value: 11.89}, {year: '2018', value: 11.52}, {year: '2019', value: 11.79},
+                {year: '2020', value: 12.51}, {year: '2021', value: 9.12}, {year: '2022', value: 7.37}
+            ]},
+            '西藏自治区': {province: '西藏自治区', data: [
+                {year: '2011', value: 0.17}, {year: '2012', value: 0.69}, {year: '2013', value: 0.29},
+                {year: '2014', value: 0.67}, {year: '2015', value: 1.04}, {year: '2016', value: 1.57},
+                {year: '2017', value: 0.85}, {year: '2018', value: 1.54}, {year: '2019', value: 0.9},
+                {year: '2020', value: 1.34}, {year: '2021', value: 0.82}, {year: '2022', value: 0.55}
+            ]},
+            '陕西省': {province: '陕西省', data: [
+                {year: '2011', value: 0.45}, {year: '2012', value: 0.91}, {year: '2013', value: 1.33},
+                {year: '2014', value: 1.41}, {year: '2015', value: 1.74}, {year: '2016', value: 2.13},
+                {year: '2017', value: 2.33}, {year: '2018', value: 2.66}, {year: '2019', value: 2.86},
+                {year: '2020', value: 2.45}, {year: '2021', value: 2.23}, {year: '2022', value: 2.29}
+            ]},
+            '甘肃省': {province: '甘肃省', data: [
+                {year: '2011', value: 0.25}, {year: '2012', value: 0.55}, {year: '2013', value: 0.68},
+                {year: '2014', value: 0.88}, {year: '2015', value: 1.2}, {year: '2016', value: 1.55},
+                {year: '2017', value: 1.84}, {year: '2018', value: 2.35}, {year: '2019', value: 2.29},
+                {year: '2020', value: 2.04}, {year: '2021', value: 2}, {year: '2022', value: 1.48}
+            ]},
+            '青海省': {province: '青海省', data: [
+                {year: '2011', value: 0.53}, {year: '2012', value: 1.36}, {year: '2013', value: 1.62},
+                {year: '2014', value: 1.85}, {year: '2015', value: 2.59}, {year: '2016', value: 2.97},
+                {year: '2017', value: 3.29}, {year: '2018', value: 2.59}, {year: '2019', value: 3.32},
+                {year: '2020', value: 2.42}, {year: '2021', value: 3.19}, {year: '2022', value: 2.05}
+            ]},
+            '宁夏回族自治区': {province: '宁夏回族自治区', data: [
+                {year: '2011', value: 0.19}, {year: '2012', value: 0.75}, {year: '2013', value: 0.91},
+                {year: '2014', value: 0.87}, {year: '2015', value: 1.18}, {year: '2016', value: 1.26},
+                {year: '2017', value: 1.5}, {year: '2018', value: 1.69}, {year: '2019', value: 2.21},
+                {year: '2020', value: 1.55}, {year: '2021', value: 1.47}, {year: '2022', value: 1.31}
+            ]},
+            '新疆维吾尔自治区': {province: '新疆维吾尔自治区', data: [
+                {year: '2011', value: 3.18}, {year: '2012', value: 11.09}, {year: '2013', value: 8.02},
+                {year: '2014', value: 7.12}, {year: '2015', value: 8.13}, {year: '2016', value: 8.14},
+                {year: '2017', value: 8.35}, {year: '2018', value: 10.1}, {year: '2019', value: 9.5},
+                {year: '2020', value: 5.96}, {year: '2021', value: 5.43}, {year: '2022', value: 4.89}
+            ]},
+            '台湾省': {province: '台湾省', data: []},
+            '香港特别行政区': {province: '香港特别行政区', data: []},
+            '澳门特别行政区': {province: '澳门特别行政区', data: []}
+        };
+        // 省份趋势图配置
+        function getTrendOption(provinceName) {
+            var trendData = trendDataMap[provinceName];
+            if (!trendData || trendData.data.length === 0) {
+                return {
+                    title: {
+                        text: provinceName + '艾滋病发病率趋势(数据不可用)',
+                        left: 'center',
+                        top: 'center'
+                    }
+                };
+            }
+            
+            var years = trendData.data.map(item => item.year);
+            var values = trendData.data.map(item => item.value);
+            
+            return {
+                title: {
+                    text: provinceName + '艾滋病发病率趋势(2011-2022)',
+                    left: 'center',
+                    top: 10,
+                    textStyle: {
+                        fontSize: 16
+                    }
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        return params[0].name + '年<br/>' +
+                               '发病率: ' + params[0].value + '/10万';
+                    }
+                },
+                grid: {
+                    left: '10%',
+                    right: '10%',
+                    bottom: '15%',
+                    top: '20%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: years,
+                    name: '年份',
+                    axisLabel: {
+                        interval: 0,
+                        rotate: 30
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '发病率(1/10万)',
+                    axisLabel: {
+                        formatter: '{value}'
+                    }
+                },
+                series: [
+                    {
+                        name: '发病率',
+                        type: 'line',
+                        data: values,
+                        smooth: true,
+                        itemStyle: {
+                            color: '#3498db'
+                        },
+                        lineStyle: {
+                            width: 3
+                        },
+                        areaStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(52, 152, 219, 0.5)' },
+                                { offset: 1, color: 'rgba(52, 152, 219, 0.1)' }
+                            ])
+                        },
+                        symbolSize: 8,
+                        markPoint: {
+                            data: [
+                                { type: 'max', name: '最大值' },
+                                { type: 'min', name: '最小值' }
+                            ]
+                        }
+                    }
+                ]
+            };
+        }
+        
+        // 加载中国地图JSON数据
+        function loadMapData() {
+            $.ajax({
+                //url: 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
+                type: 'GET',
+                dataType: 'json',
+                success: function(geoJson) {
+                    echarts.registerMap('china', geoJson);
+                    chinaChart.setOption(chinaOption);
+                    $('#loading').hide();
+                    
+                    // 设置点击事件
+                    chinaChart.on('click', function(params) {
+                        var provinceName = params.name;
+                        showProvinceView(provinceName);
+                    });
+                },
+                error: function() {
+                    console.log('主数据源加载失败，尝试备用数据源...');
+                    loadBackupMapData();
+                }
+            });
+        }
+        
+        // 显示省份视图
+        function showProvinceView(provinceName) {
+            // 隐藏全国地图，显示省份视图
+            document.getElementById('china-map').classList.add('hidden');
+            document.getElementById('trend-chart').classList.remove('hidden');
+            document.getElementById('back-btn').classList.remove('hidden');
+            
+            // 设置趋势图
+            trendChart.setOption(getTrendOption(provinceName));
+            trendChart.resize();
+            
+            // 尝试加载省份地图
+            loadProvinceMap(provinceName);
+        }
+        
+        // 加载省份地图
+        function loadProvinceMap(provinceName) {
+            // 先隐藏省份地图容器
+            document.getElementById('province-map').classList.add('hidden');
+            
+            // 尝试获取省份地图数据
+            var adcode = getProvinceAdcode(provinceName);
+            if (!adcode) {
+                console.log('未找到省份编码:', provinceName);
+                return;
+            }
+            
+            var url = `https://geo.datav.aliyun.com/areas_v3/bound/${adcode}_full.json`;
+            
+            $.ajax({
+                url: url,
+                type: 'GET',
+                dataType: 'json',
+                success: function(geoJson) {
+                    echarts.registerMap(provinceName, geoJson);
+                    
+                    // 显示省份地图容器
+                    document.getElementById('province-map').classList.remove('hidden');
+                    
+                    // 设置省份地图选项
+                    var provinceOption = {
+                        title: {
+                            text: provinceName + '行政区划图',
+                            left: 'center',
+                            top: 10,
+                            textStyle: {
+                                fontSize: 16
+                            }
+                        },
+                        tooltip: {
+                            trigger: 'item',
+                            formatter: '{b}'
+                        },
+                        series: [
+                            {
+                                name: provinceName,
+                                type: 'map',
+                                map: provinceName,
+                                roam: true,
+                                label: {
+                                    show: true,
+                                    fontSize: 12
+                                },
+                                emphasis: {
+                                    label: {
+                                        show: true,
+                                        color: '#fff',
+                                        fontWeight: 'bold'
+                                    },
+                                    itemStyle: {
+                                        areaColor: '#3498db'
+                                    }
+                                },
+                                itemStyle: {
+                                    areaColor: '#ecf0f1',
+                                    borderColor: '#bdc3c7'
+                                }
+                            }
+                        ]
+                    };
+                    
+                    provinceChart.setOption(provinceOption);
+                    provinceChart.resize();
+                },
+                error: function() {
+                    console.log('无法加载省份地图:', provinceName);
+                }
+            });
+        }
+        
+        // 省份名称到adcode的映射
+        function getProvinceAdcode(provinceName) {
+            var adcodeMap = {
+                '北京市': '110000',
+                '天津市': '120000',
+                '河北省': '130000',
+                '山西省': '140000',
+                '内蒙古自治区': '150000',
+                '辽宁省': '210000',
+                '吉林省': '220000',
+                '黑龙江省': '230000',
+                '上海市': '310000',
+                '江苏省': '320000',
+                '浙江省': '330000',
+                '安徽省': '340000',
+                '福建省': '350000',
+                '江西省': '360000',
+                '山东省': '370000',
+                '河南省': '410000',
+                '湖北省': '420000',
+                '湖南省': '430000',
+                '广东省': '440000',
+                '广西壮族自治区': '450000',
+                '海南省': '460000',
+                '重庆市': '500000',
+                '四川省': '510000',
+                '贵州省': '520000',
+                '云南省': '530000',
+                '西藏自治区': '540000',
+                '陕西省': '610000',
+                '甘肃省': '620000',
+                '青海省': '630000',
+                '宁夏回族自治区': '640000',
+                '新疆维吾尔自治区': '650000',
+                '台湾省': '710000',
+                '香港特别行政区': '810000',
+                '澳门特别行政区': '820000'
+            };
+            return adcodeMap[provinceName];
+        }
+        
+        // 加载备用地图数据
+        function loadBackupMapData() {
+            $.ajax({
+                url: 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
+                type: 'GET',
+                dataType: 'json',
+                success: function(geoJson) {
+                    echarts.registerMap('china', geoJson);
+                    chinaChart.setOption(chinaOption);
+                    $('#loading').hide();
+                    
+                    // 设置点击事件
+                    chinaChart.on('click', function(params) {
+                        var provinceName = params.name;
+                        showProvinceView(provinceName);
+                    });
+                },
+                error: function() {
+                    $('#loading').text('地图数据加载失败，请刷新重试或检查网络连接');
+                    console.error('地图数据加载失败');
+                }
+            });
+        }
+        
+        // 返回全国视图
+        document.getElementById('back-btn').addEventListener('click', function() {
+            document.getElementById('china-map').classList.remove('hidden');
+            document.getElementById('trend-chart').classList.add('hidden');
+            document.getElementById('province-map').classList.add('hidden');
+            document.getElementById('back-btn').classList.add('hidden');
+            chinaChart.resize();
+        });
+        
+        // 年份滑块事件
+        document.getElementById('year-slider').addEventListener('input', function() {
+            currentYear = parseInt(this.value);
+            document.getElementById('year-display').textContent = currentYear + '年';
+            
+            // 更新地图数据
+            currentData = yearlyData[currentYear];
+            chinaOption.series[0].data = getMapData(currentYear);
+            chinaOption.title.text = '中国各省份艾滋病发病率 (' + currentYear + '年)';
+            chinaChart.setOption(chinaOption);
+        });
+        
+        // 初始加载地图数据
+        loadMapData();
+        
+        // 响应式调整
+        window.addEventListener('resize', function() {
+            chinaChart.resize();
+            provinceChart.resize();
+            trendChart.resize();
+        });
+    </script>
+</body>
+</html>

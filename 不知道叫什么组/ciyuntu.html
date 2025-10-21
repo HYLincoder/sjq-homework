@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>艾滋病词云图</title>
+  <style>
+    body { 
+      margin: 0; 
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #wordcloud-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #wordcloud {
+      max-width: 100%;
+      max-height: 100%;
+      transform-origin: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="wordcloud-container">
+    <svg id="wordcloud"></svg>
+  </div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.5/build/d3.layout.cloud.min.js"></script>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // 1. 获取容器尺寸
+      const container = document.getElementById('wordcloud-container');
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      
+      // 2. 设置词云尺寸（取容器尺寸的90%）
+      const cloudWidth = Math.min(containerWidth, containerHeight) * 0.9;
+      const cloudHeight = cloudWidth;
+      
+      // 3. 词云数据
+      const data = [
+        { text: "艾滋病", size: 80 },
+        { text: "预防", size: 60 },
+        { text: "治疗", size: 55 },
+        { text: "检测", size: 50 },
+        { text: "关爱", size: 45 },
+        { text: "安全套", size: 40 },
+        { text: "母婴传播", size: 38 },
+        { text: "抗病毒治疗", size: 35 },
+        { text: "消除歧视", size: 32 },
+        { text: "HIV", size: 60 },
+        { text: "病毒载量", size: 32 },
+        { text: "合并感染", size: 24 },
+        { text: "免费治疗政策", size: 48 },
+        { text: "红丝带", size: 32 },
+        { text: "同性恋", size: 40 },
+        { text: "PEP", size: 48 },
+        { text: "U = U", size: 32 },
+        { text: "窗口期", size: 32 },
+        { text: "高危行为", size: 40 },
+        { text: "社会认知", size: 32 },
+        { text: "病毒载量", size: 24 },
+        { text: "暴露前预防", size: 30 },
+        { text: "大学生", size: 48 },
+        { text: "治愈率", size: 36 },
+        { text: "报复性行为", size: 60 },
+        { text: "血液传播", size: 30 }
+      ];
+
+      // 4. 画布设置
+      const center = { x: cloudWidth/2, y: cloudHeight/2 };
+      const maxRadius = cloudWidth * 0.4; // 调整为相对值
+
+      // 5. 布局函数
+      function layoutCloud() {
+        const cloud = d3.layout.cloud();
+        
+        return cloud
+          .size([cloudWidth, cloudHeight])
+          .words(data.map(d => ({...d})))
+          .padding(8)
+          .rotate(() => (Math.random() - 0.5) * 30)
+          .font("Microsoft YaHei")
+          .fontSize(d => d.size * (cloudWidth/800)) // 根据尺寸调整字体大小
+          .spiral("archimedean")
+          .on("end", draw);
+      }
+
+      // 6. 绘制函数
+      function draw(words) {
+        const svg = d3.select("#wordcloud")
+          .attr("width", cloudWidth)
+          .attr("height", cloudHeight);
+        
+        svg.selectAll("*").remove();
+        const g = svg.append("g")
+          .attr("transform", `translate(${center.x},${center.y})`);
+        
+        // 绘制词语
+        g.selectAll("text")
+          .data(words)
+          .enter()
+          .append("text")
+          .style("font-size", d => `${d.size}px`)
+          .style("font-family", "Microsoft YaHei")
+          .style("fill", (d, i) => d3.interpolateRainbow(i/words.length))
+          .attr("text-anchor", "middle")
+          .attr("x", d => d.x || 0)
+          .attr("y", d => d.y || 0)
+          .attr("dy", "0.35em")
+          .attr("transform", d => `rotate(${d.rotate||0},${d.x||0},${d.y||0})`)
+          .text(d => d.text);
+      }
+
+      // 7. 启动布局
+      layoutCloud().start();
+
+      // 8. 窗口大小改变时重新计算
+      window.addEventListener('resize', function() {
+        const newWidth = Math.min(container.clientWidth, container.clientHeight) * 0.9;
+        if (Math.abs(newWidth - cloudWidth) > 10) { // 避免频繁重绘
+          location.reload(); // 简单方案：重新加载
+        }
+      });
+    });
+  </script>
+</body>
+</html>
